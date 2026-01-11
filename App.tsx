@@ -338,7 +338,7 @@ const App: React.FC = () => {
               <input 
                 type="text" 
                 placeholder="balanceiro ou visitante"
-                className="w-full bg-slate-750 border border-slate-600 rounded-xl px-4 py-3 text-white placeholder:text-slate-500 focus:ring-2 focus:ring-blue-500 outline-none transition-all"
+                className="w-full bg-white border border-slate-300 rounded-xl px-4 py-3 text-slate-900 placeholder:text-slate-400 focus:ring-2 focus:ring-blue-500 outline-none transition-all"
                 value={loginData.user}
                 onChange={(e) => setLoginData({ ...loginData, user: e.target.value })}
                 required
@@ -350,7 +350,7 @@ const App: React.FC = () => {
               <input 
                 type="password" 
                 placeholder="•••••"
-                className="w-full bg-slate-750 border border-slate-600 rounded-xl px-4 py-3 text-white placeholder:text-slate-500 focus:ring-2 focus:ring-blue-500 outline-none transition-all"
+                className="w-full bg-white border border-slate-300 rounded-xl px-4 py-3 text-slate-900 placeholder:text-slate-400 focus:ring-2 focus:ring-blue-500 outline-none transition-all"
                 value={loginData.pass}
                 onChange={(e) => setLoginData({ ...loginData, pass: e.target.value })}
                 required
@@ -360,7 +360,7 @@ const App: React.FC = () => {
             <div className="space-y-1.5">
               <label className="text-xs font-bold text-slate-400 uppercase tracking-widest">Usina</label>
               <select 
-                className="w-full bg-slate-750 border border-slate-600 rounded-xl px-4 py-3 text-white focus:ring-2 focus:ring-blue-500 outline-none transition-all cursor-pointer"
+                className="w-full bg-white border border-slate-300 rounded-xl px-4 py-3 text-slate-900 focus:ring-2 focus:ring-blue-500 outline-none transition-all cursor-pointer"
                 value={loginData.usina}
                 onChange={(e) => setLoginData({ ...loginData, usina: e.target.value as UsinaName })}
               >
