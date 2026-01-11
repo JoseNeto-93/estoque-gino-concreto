@@ -33,7 +33,7 @@ const App: React.FC = () => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const isInternalUpdate = useRef(false);
 
-  // Carregamento Inicial (Simulando busca em banco)
+  // Carregamento Inicial
   useEffect(() => {
     dataService.loadInitialState().then(initialState => {
       setState(initialState);
@@ -59,10 +59,8 @@ const App: React.FC = () => {
   useEffect(() => {
     if (!state) return;
     
-    // Salva o estado atualizado (no localStorage por enquanto)
     dataService.persistState(state);
 
-    // Se a alteração foi feita localmente por um admin, avisa as outras telas
     if (!isInternalUpdate.current && state.isLoggedIn && state.userRole === 'admin') {
       dataService.broadcastChange(state.inventory, state.history);
     }
@@ -247,7 +245,8 @@ const App: React.FC = () => {
       
       y += 10;
       doc.setFontSize(10);
-      Object.entries(currentStock).forEach(([material, weight]) => {
+      Object.entries(currentStock).forEach(([material, weightValue]) => {
+        const weight = weightValue as number;
         const isCimento = material.includes('SILO');
         const threshold = isCimento ? LOW_STOCK_THRESHOLD_CEMENT : LOW_STOCK_THRESHOLD;
         const isLow = weight < threshold;
@@ -272,7 +271,6 @@ const App: React.FC = () => {
       });
 
       doc.setTextColor(30, 41, 59);
-
       y += 10;
       doc.setFont("helvetica", "bold");
       doc.setFontSize(14);
@@ -429,7 +427,6 @@ const App: React.FC = () => {
       </header>
 
       <main className="flex-1 max-w-7xl mx-auto w-full p-4 md:p-8 space-y-8">
-        
         <div className="flex flex-wrap gap-3">
           {isAdmin && (
             <>
