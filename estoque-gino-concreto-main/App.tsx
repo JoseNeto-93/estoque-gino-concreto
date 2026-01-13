@@ -174,9 +174,13 @@ const App: React.FC = () => {
     const material = formData.get('material') as MaterialKey;
     const weightToAdd = parseFloat(formData.get('weight') as string);
 
-    if (!material || isNaN(weightToAdd)) return;
+    if (!material || isNaN(weightToAdd)) {
+      alert('Selecione um material e informe o peso corretamente.');
+      return;
+    }
 
     try {
+      console.log('[handleManualEntry] Processando lançamento:', { material, weightToAdd });
       const currentValue = state.inventory[state.currentUsina][material];
       const newValue = currentValue + weightToAdd;
       
@@ -184,18 +188,29 @@ const App: React.FC = () => {
       const allItems = await dataService.listarEstoque();
       const existingItem = allItems.find(item => item.nome === material && item.usina === state.currentUsina);
 
+      let success = false;
       if (existingItem && existingItem.id) {
-        await dataService.atualizarItemEstoque(existingItem.id, newValue);
+        const result = await dataService.atualizarItemEstoque(existingItem.id, newValue);
+        success = result !== null;
       } else {
-        await dataService.criarItemEstoque(material, newValue, state.currentUsina);
+        const result = await dataService.criarItemEstoque(material, newValue, state.currentUsina);
+        success = result !== null;
       }
 
+      if (!success) {
+        console.error('[handleManualEntry] Falha ao salvar no Supabase');
+        alert('Erro ao lançar nota fiscal. Verifique a conexão com o banco de dados.');
+        return;
+      }
+
+      // Somente após sucesso: log, fechar modal, resetar form
+      console.log('[handleManualEntry] ✓ Lançamento salvo com sucesso');
       addLog(state.currentUsina, 'ENTRADA', `Lançamento manual: ${material} (+${weightToAdd} kg)`);
       setIsNoteModalOpen(false);
       e.currentTarget.reset();
-    } catch (err) {
-      console.error('[handleManualEntry] Erro:', err);
-      alert('Erro ao lançar nota fiscal');
+    } catch (err: any) {
+      console.error('[handleManualEntry] Exceção:', err?.message ?? err);
+      alert('Erro ao lançar nota fiscal: ' + (err?.message || 'Erro desconhecido'));
     }
   };
 
@@ -206,24 +221,39 @@ const App: React.FC = () => {
     const formData = new FormData(e.currentTarget);
     const newWeight = parseFloat(formData.get('weight') as string);
 
-    if (isNaN(newWeight)) return;
+    if (isNaN(newWeight) || newWeight < 0) {
+      alert('Informe um peso válido (maior ou igual a zero).');
+      return;
+    }
 
     try {
+      console.log('[handleEditStock] Alterando saldo:', { material: editingMaterial, newWeight });
       // Buscar o item no banco e atualizar
       const allItems = await dataService.listarEstoque();
       const existingItem = allItems.find(item => item.nome === editingMaterial && item.usina === state.currentUsina);
 
+      let success = false;
       if (existingItem && existingItem.id) {
-        await dataService.atualizarItemEstoque(existingItem.id, newWeight);
+        const result = await dataService.atualizarItemEstoque(existingItem.id, newWeight);
+        success = result !== null;
       } else {
-        await dataService.criarItemEstoque(editingMaterial, newWeight, state.currentUsina);
+        const result = await dataService.criarItemEstoque(editingMaterial, newWeight, state.currentUsina);
+        success = result !== null;
       }
 
+      if (!success) {
+        console.error('[handleEditStock] Falha ao salvar no Supabase');
+        alert('Erro ao alterar saldo. Verifique a conexão com o banco de dados.');
+        return;
+      }
+
+      // Somente após sucesso: log e fechar modal
+      console.log('[handleEditStock] ✓ Saldo alterado com sucesso');
       addLog(state.currentUsina, 'RESET', `Saldo de ${editingMaterial} alterado manualmente para ${formatKg(newWeight)}`);
       setEditingMaterial(null);
-    } catch (err) {
-      console.error('[handleEditStock] Erro:', err);
-      alert('Erro ao alterar saldo');
+    } catch (err: any) {
+      console.error('[handleEditStock] Exceção:', err?.message ?? err);
+      alert('Erro ao alterar saldo: ' + (err?.message || 'Erro desconhecido'));
     }
   };
 
@@ -267,11 +297,15 @@ const App: React.FC = () => {
 
         addLog(state.currentUsina, 'SAÍDA_RELATÓRIO', 'Relatório processado e estoque atualizado.');
         alert('Relatório processado com sucesso!');
-      } catch (err) {
+      } catch (err: any) {
+        console.error('[handleFileUpload] Erro ao processar:', err?.message ?? err);
         alert(err instanceof Error ? err.message : 'Erro ao processar o arquivo.');
       } finally {
         setIsProcessing(false);
-        if (fileInputRef.current) fileInputRef.current.value = '';
+        // Verificar se ref existe antes de resetar
+        if (fileInputRef.current) {
+          fileInputRef.current.value = '';
+        }
       }
     };
     reader.readAsDataURL(file);
@@ -503,7 +537,11 @@ const App: React.FC = () => {
               </button>
               
               <button 
-                onClick={() => fileInputRef.current?.click()}
+                onClick={() => {
+                  if (fileInputRef.current) {
+                    fileInputRef.current.click();
+                  }
+                }}
                 disabled={isProcessing}
                 className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white px-5 py-2.5 rounded-xl font-bold transition-all shadow-md active:scale-95 disabled:opacity-50"
               >

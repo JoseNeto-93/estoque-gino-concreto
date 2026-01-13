@@ -47,20 +47,22 @@ class DataService {
     }
 
     try {
+      console.log('[listarEstoque] Buscando estoque da tabela "estoque"...');
       const { data, error } = await this.supabase
         .from('estoque')
         .select('*')
         .order('updated_at', { ascending: false });
 
       if (error) {
-        console.error('[listarEstoque] Erro ao buscar estoque:', error);
+        console.error('[listarEstoque] Erro ao buscar estoque:', error?.message ?? error);
+        console.error('[listarEstoque] Detalhes do erro:', { code: error?.code, details: error?.details, hint: error?.hint });
         return [];
       }
 
-      console.log('[listarEstoque] Itens carregados:', data?.length || 0);
+      console.log('[listarEstoque] ✓ Itens carregados:', data?.length || 0);
       return (data || []) as EstoqueItem[];
-    } catch (err) {
-      console.error('[listarEstoque] Exceção:', err);
+    } catch (err: any) {
+      console.error('[listarEstoque] Exceção capturada:', err?.message ?? err);
       return [];
     }
   }
@@ -75,6 +77,7 @@ class DataService {
     }
 
     try {
+      console.log('[criarItemEstoque] Criando item:', { nome, quantidade, usina });
       const { data, error } = await this.supabase
         .from('estoque')
         .insert([{ nome, quantidade, usina }])
@@ -82,14 +85,15 @@ class DataService {
         .single();
 
       if (error) {
-        console.error('[criarItemEstoque] Erro ao criar item:', error);
+        console.error('[criarItemEstoque] Erro ao criar item:', error?.message ?? error);
+        console.error('[criarItemEstoque] Detalhes:', { code: error?.code, details: error?.details });
         return null;
       }
 
-      console.log('[criarItemEstoque] Item criado:', data);
+      console.log('[criarItemEstoque] ✓ Item criado com sucesso:', data?.id);
       return data as EstoqueItem;
-    } catch (err) {
-      console.error('[criarItemEstoque] Exceção:', err);
+    } catch (err: any) {
+      console.error('[criarItemEstoque] Exceção capturada:', err?.message ?? err);
       return null;
     }
   }
@@ -104,6 +108,7 @@ class DataService {
     }
 
     try {
+      console.log('[atualizarItemEstoque] Atualizando item:', { id, quantidade });
       const { data, error } = await this.supabase
         .from('estoque')
         .update({ quantidade, updated_at: new Date().toISOString() })
@@ -112,14 +117,15 @@ class DataService {
         .single();
 
       if (error) {
-        console.error('[atualizarItemEstoque] Erro ao atualizar item:', error);
+        console.error('[atualizarItemEstoque] Erro ao atualizar item:', error?.message ?? error);
+        console.error('[atualizarItemEstoque] Detalhes:', { code: error?.code, id });
         return null;
       }
 
-      console.log('[atualizarItemEstoque] Item atualizado:', data);
+      console.log('[atualizarItemEstoque] ✓ Item atualizado com sucesso');
       return data as EstoqueItem;
-    } catch (err) {
-      console.error('[atualizarItemEstoque] Exceção:', err);
+    } catch (err: any) {
+      console.error('[atualizarItemEstoque] Exceção capturada:', err?.message ?? err);
       return null;
     }
   }
@@ -134,20 +140,22 @@ class DataService {
     }
 
     try {
+      console.log('[removerItemEstoque] Removendo item:', id);
       const { error } = await this.supabase
         .from('estoque')
         .delete()
         .eq('id', id);
 
       if (error) {
-        console.error('[removerItemEstoque] Erro ao remover item:', error);
+        console.error('[removerItemEstoque] Erro ao remover item:', error?.message ?? error);
+        console.error('[removerItemEstoque] Detalhes:', { code: error?.code, id });
         return false;
       }
 
-      console.log('[removerItemEstoque] Item removido:', id);
+      console.log('[removerItemEstoque] ✓ Item removido com sucesso');
       return true;
-    } catch (err) {
-      console.error('[removerItemEstoque] Exceção:', err);
+    } catch (err: any) {
+      console.error('[removerItemEstoque] Exceção capturada:', err?.message ?? err);
       return false;
     }
   }
