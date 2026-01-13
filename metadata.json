@@ -1,0 +1,7 @@
+{
+  "name": "Estoque Gino Concreto ",
+  "description": "Sistema avançado de controle de estoque para usinas de concreto, com processamento inteligente de relatórios e estimativas de produção.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
