@@ -320,9 +320,13 @@ class DataService {
       } as any;
     });
 
+    // Usar ÚLTIMO valor encontrado de cada material/usina (em caso de duplicatas)
     items.forEach((item: any) => {
       if (inventory[item.usina] && item.nome in inventory[item.usina]) {
         inventory[item.usina][item.nome] = item.quantidade;
+        console.log(`[buildInventory] ${item.usina} - ${item.nome}: ${item.quantidade} kg`);
+      } else {
+        console.warn(`[buildInventory] Item ignorado:`, item);
       }
     });
 
