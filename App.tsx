@@ -199,8 +199,16 @@ const App: React.FC = () => {
       // Somente após sucesso: log, fechar modal, resetar form
       console.log('[handleManualEntry] ✓ Lançamento salvo com sucesso');
       addLog(state.currentUsina, 'ENTRADA', `Lançamento manual: ${material} (+${weightToAdd} kg)`);
+      
+      // Resetar formulário de forma segura
+      try {
+        e.currentTarget.reset();
+      } catch (resetError) {
+        console.warn('[handleManualEntry] Erro ao resetar formulário (não crítico):', resetError);
+      }
+      
+      // Fechar modal
       setIsNoteModalOpen(false);
-      e.currentTarget.reset();
     } catch (err: any) {
       console.error('[handleManualEntry] Exceção:', err?.message ?? err);
       alert('Erro ao lançar nota fiscal: ' + (err?.message || 'Erro desconhecido'));
