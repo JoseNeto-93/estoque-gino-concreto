@@ -204,8 +204,23 @@ const App: React.FC = () => {
         return;
       }
 
-      // Somente após sucesso: log, fechar modal, resetar form
+      // Somente após sucesso: recarregar estado, log, fechar modal, resetar form
       console.log('[handleManualEntry] ✓ Lançamento salvo com sucesso');
+      
+      // FORÇAR recarga imediata do estado
+      const freshState = await dataService.loadInitialState();
+      setState(prev => {
+        if (!prev) return null;
+        return {
+          ...prev,
+          inventory: freshState.inventory,
+          userRole: prev.userRole,
+          isLoggedIn: prev.isLoggedIn,
+          currentUsina: prev.currentUsina
+        };
+      });
+      console.log('[handleManualEntry] Estado atualizado na tela');
+      
       addLog(state.currentUsina, 'ENTRADA', `Lançamento manual: ${material} (+${weightToAdd} kg)`);
       
       // Resetar formulário de forma segura
@@ -256,8 +271,23 @@ const App: React.FC = () => {
         return;
       }
 
-      // Somente após sucesso: log e fechar modal
+      // Somente após sucesso: recarregar estado, log e fechar modal
       console.log('[handleEditStock] ✓ Saldo alterado com sucesso');
+      
+      // FORÇAR recarga imediata do estado
+      const freshState = await dataService.loadInitialState();
+      setState(prev => {
+        if (!prev) return null;
+        return {
+          ...prev,
+          inventory: freshState.inventory,
+          userRole: prev.userRole,
+          isLoggedIn: prev.isLoggedIn,
+          currentUsina: prev.currentUsina
+        };
+      });
+      console.log('[handleEditStock] Estado atualizado na tela');
+      
       addLog(state.currentUsina, 'RESET', `Saldo de ${editingMaterial} alterado manualmente para ${formatKg(newWeight)}`);
       setEditingMaterial(null);
     } catch (err: any) {
