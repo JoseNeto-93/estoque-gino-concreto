@@ -30,35 +30,83 @@ const App: React.FC = () => {
   const [isProcessing, setIsProcessing] = useState(false);
   const [loginData, setLoginData] = useState({ user: '', pass: '', usina: USINAS[0] });
   const [loginError, setLoginError] = useState('');
+  const [error, setError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Carregamento Inicial
   useEffect(() => {
-    dataService.loadInitialState().then(initialState => {
-      setState(initialState);
-    });
+    console.log('[App] Iniciando carregamento do estado');
+    
+    const loadState = async () => {
+      try {
+        const initialState = await dataService.loadInitialState();
+        console.log('[App] Estado carregado:', initialState?.currentUsina);
+        setState(initialState);
+        setError(null);
+      } catch (err) {
+        console.error('[App] Erro ao carregar estado:', err);
+        setError('Erro ao carregar aplicação. Tente novamente.');
+      }
+    };
+
+    loadState();
   }, []);
 
   // Monitorar mudanças em tempo real via Supabase Realtime
   useEffect(() => {
-    if (!state) return;
+    if (!state) {
+      console.log('[App] State ainda é null, subscription aguardando...');
+      return;
+    }
     
+    console.log('[App] Configurando subscription Realtime');
     const unsubscribe = dataService.subscribeToChanges((data) => {
-      console.log('[App] Atualização em tempo real recebida:', data);
-      setState(prev => prev ? ({
-        ...prev,
-        inventory: data.inventory
-      }) : null);
+      console.log('[App] Atualização em tempo real recebida');
+      setState(prev => {
+        if (!prev) return null;
+        return {
+          ...prev,
+          inventory: data.inventory
+        };
+      });
     });
     
-    return () => unsubscribe();
-  }, []);
+    return () => {
+      console.log('[App] Limpando subscription Realtime');
+      unsubscribe();
+    };
+  }, [state !== null]); // Depende se state foi inicializado
 
-  if (!state) return (
-    <div className="min-h-screen bg-slate-900 flex items-center justify-center">
-      <div className="animate-spin h-8 w-8 border-4 border-blue-500 border-t-transparent rounded-full"></div>
-    </div>
-  );
+  // Fallback para erro de carregamento
+  if (error) {
+    return (
+      <div className="min-h-screen bg-red-50 flex items-center justify-center p-4">
+        <div className="bg-white rounded-lg shadow-lg p-8 max-w-md">
+          <h1 className="text-2xl font-bold text-red-600 mb-4">Erro</h1>
+          <p className="text-slate-700 mb-6">{error}</p>
+          <button 
+            onClick={() => window.location.reload()}
+            className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded"
+          >
+            Recarregar Página
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // Exibir loading enquanto carrega
+  if (state === null) {
+    console.log('[App] Renderizando loading state');
+    return (
+      <div className="min-h-screen bg-slate-900 flex items-center justify-center flex-col gap-4">
+        <div className="animate-spin h-12 w-12 border-4 border-blue-500 border-t-transparent rounded-full"></div>
+        <p className="text-white text-sm">Inicializando aplicação...</p>
+      </div>
+    );
+  }
+
+  console.log('[App] Renderizando conteúdo principal', { isLoggedIn: state.isLoggedIn });
 
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
@@ -83,9 +131,17 @@ const App: React.FC = () => {
     setState(prev => prev ? ({ ...prev, isLoggedIn: false, userRole: undefined }) : null);
   };
 
-  const currentStock = state.inventory[state.currentUsina];
+  // Garantir que sempre existem valores seguros
+  const currentStock = state?.inventory?.[state?.currentUsina] || {
+    'BRITA 0': 0,
+    'BRITA 1': 0,
+    'AREIA MÉDIA': 0,
+    'AREIA DE BRITA': 0,
+    'SILO 1': 0,
+    'SILO 2': 0
+  };
   const estimates = calculateEstimates(currentStock);
-  const isAdmin = state.userRole === 'admin';
+  const isAdmin = state?.userRole === 'admin';
 
   const addLog = (usina: UsinaName, action: HistoryLog['action'], details: string) => {
     const newLog: HistoryLog = {

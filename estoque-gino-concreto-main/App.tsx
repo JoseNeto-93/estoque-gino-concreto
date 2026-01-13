@@ -25,6 +25,8 @@ const IconTruck = () => <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h
 
 const App: React.FC = () => {
   const [state, setState] = useState<AppState | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
   const [isNoteModalOpen, setIsNoteModalOpen] = useState(false);
   const [editingMaterial, setEditingMaterial] = useState<MaterialKey | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
@@ -34,31 +36,85 @@ const App: React.FC = () => {
 
   // Carregamento Inicial
   useEffect(() => {
-    dataService.loadInitialState().then(initialState => {
-      setState(initialState);
-    });
+    const loadState = async () => {
+      try {
+        console.log('[App] Iniciando carregamento do estado...');
+        setIsLoading(true);
+        setError(null);
+        
+        const initialState = await dataService.loadInitialState();
+        console.log('[App] Estado carregado com sucesso:', initialState);
+        
+        setState(initialState);
+      } catch (err) {
+        console.error('[App] Erro ao carregar estado:', err);
+        setError('Falha ao carregar dados da aplicação. Tente novamente.');
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    
+    loadState();
   }, []);
 
   // Monitorar mudanças em tempo real via Supabase Realtime
   useEffect(() => {
-    if (!state) return;
+    if (!state) {
+      console.log('[App] State é null, não criando subscription');
+      return;
+    }
     
+    console.log('[App] Criando subscription para mudanças em tempo real');
     const unsubscribe = dataService.subscribeToChanges((data) => {
       console.log('[App] Atualização em tempo real recebida:', data);
       setState(prev => prev ? ({
         ...prev,
-        inventory: data.inventory
+        inventory: data.inventory,
+        lastSync: new Date().toISOString()
       }) : null);
     });
     
-    return () => unsubscribe();
-  }, []);
+    return () => {
+      console.log('[App] Limpando subscription');
+      unsubscribe();
+    };
+  }, [state !== null]);
 
-  if (!state) return (
-    <div className="min-h-screen bg-slate-900 flex items-center justify-center">
-      <div className="animate-spin h-8 w-8 border-4 border-blue-500 border-t-transparent rounded-full"></div>
-    </div>
-  );
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-slate-900 flex items-center justify-center">
+        <div className="flex flex-col items-center gap-4">
+          <div className="animate-spin h-12 w-12 border-4 border-blue-500 border-t-transparent rounded-full"></div>
+          <p className="text-slate-300 text-lg">Inicializando aplicação...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="min-h-screen bg-slate-900 flex items-center justify-center p-4">
+        <div className="max-w-md bg-red-900/20 border border-red-700 rounded-xl p-8">
+          <h1 className="text-2xl font-bold text-red-500 mb-4">Erro na Aplicação</h1>
+          <p className="text-slate-300 mb-6">{error}</p>
+          <button 
+            onClick={() => window.location.reload()}
+            className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg transition-colors"
+          >
+            Recarregar Página
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (!state) {
+    return (
+      <div className="min-h-screen bg-slate-900 flex items-center justify-center">
+        <div className="text-slate-300">Estado da aplicação indisponível</div>
+      </div>
+    );
+  }
 
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
@@ -83,9 +139,16 @@ const App: React.FC = () => {
     setState(prev => prev ? ({ ...prev, isLoggedIn: false, userRole: undefined }) : null);
   };
 
-  const currentStock = state.inventory[state.currentUsina];
+  const currentStock = state?.inventory?.[state?.currentUsina] || {
+    'BRITA 0': 0,
+    'BRITA 1': 0,
+    'AREIA MÉDIA': 0,
+    'AREIA DE BRITA': 0,
+    'SILO 1': 0,
+    'SILO 2': 0,
+  };
   const estimates = calculateEstimates(currentStock);
-  const isAdmin = state.userRole === 'admin';
+  const isAdmin = state?.userRole === 'admin';
 
   const addLog = (usina: UsinaName, action: HistoryLog['action'], details: string) => {
     const newLog: HistoryLog = {

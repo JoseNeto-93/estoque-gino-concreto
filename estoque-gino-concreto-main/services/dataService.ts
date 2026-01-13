@@ -155,10 +155,11 @@ class DataService {
   /**
    * Carrega o estado inicial de todas as usinas a partir da tabela estoque.
    * Constrói um AppState baseado nos dados do banco.
+   * GARANTE que retorna sempre um AppState válido (nunca null ou undefined).
    */
   async loadInitialState(): Promise<AppState> {
     if (!this.supabase) {
-      console.error('[loadInitialState] Supabase não configurado!');
+      console.warn('[loadInitialState] Supabase não configurado! Retornando fallback.');
       return this.getInitialStateFallback();
     }
 
@@ -189,7 +190,7 @@ class DataService {
         }
       });
 
-      console.log('[loadInitialState] Estado inicial carregado do banco');
+      console.log('[loadInitialState] Estado inicial carregado do banco com sucesso');
       return {
         currentUsina: 'Angatuba',
         inventory: initialInventory,
@@ -197,7 +198,8 @@ class DataService {
         isLoggedIn: false
       };
     } catch (err) {
-      console.error('[loadInitialState] Exceção ao carregar estado:', err);
+      console.warn('[loadInitialState] Erro ao carregar estado:', err);
+      console.log('[loadInitialState] Usando estado padrão como fallback');
       return this.getInitialStateFallback();
     }
   }
@@ -231,19 +233,20 @@ class DataService {
    * Escuta eventos: INSERT, UPDATE, DELETE
    * Invoca callback com os dados atualizados quando há mudanças.
    * Retorna função de unsubscribe.
+   * NOTA: Deve ser chamado apenas dentro de useEffect para evitar memory leaks
    */
   subscribeToChanges(callback: (data: { inventory: any, history: any }) => void): () => void {
     if (!this.supabase) {
-      console.error('[subscribeToChanges] Supabase não configurado!');
+      console.warn('[subscribeToChanges] Supabase não configurado, subscription desabilitada');
       return () => {};
     }
 
     try {
-      console.log('[subscribeToChanges] Criando channel Realtime...');
+      console.log('[subscribeToChanges] Criando channel Realtime para "estoque"');
       
       // Criar channel para monitorar a tabela estoque
-      this.realtimeChannel = this.supabase
-        .channel('estoque_changes')
+      const channel = this.supabase
+        .channel('estoque_changes_' + Date.now())
         .on(
           'postgres_changes',
           {
@@ -251,35 +254,38 @@ class DataService {
             schema: 'public',
             table: 'estoque'
           },
-          async (payload: any) => {
-            try {
-              console.log('[subscribeToChanges] Evento recebido:', payload.eventType, payload);
-              
-              // Recarregar estado completo do banco após mudança
-              const items = await this.listarEstoque();
-              const inventory = this.buildInventoryFromItems(items);
-              
-              callback({ inventory, history: {} }); // history vem do banco também, se necessário
-            } catch (err) {
-              console.error('[subscribeToChanges] Erro ao processar mudança:', err);
-            }
+          (payload: any) => {
+            // NÃO usar async aqui - disparar recarregamento sem bloquear
+            console.log('[subscribeToChanges] Evento recebido:', payload.eventType);
+            
+            // Recarregar estado de forma não-bloqueante
+            this.listarEstoque()
+              .then(items => {
+                const inventory = this.buildInventoryFromItems(items);
+                callback({ inventory, history: {} });
+              })
+              .catch(err => {
+                console.warn('[subscribeToChanges] Erro ao recarregar após evento:', err);
+              });
           }
         )
         .subscribe((status) => {
           console.log('[subscribeToChanges] Status de subscrição:', status);
-          if (status === 'CHANNEL_ERROR') {
-            console.error('[subscribeToChanges] Erro no channel Realtime');
-          }
         });
 
+      // Retornar função de cleanup que remove o channel
       return () => {
         console.log('[subscribeToChanges] Desinscrição de mudanças');
-        if (this.realtimeChannel) {
-          this.supabase?.removeChannel(this.realtimeChannel);
+        try {
+          if (this.supabase && channel) {
+            this.supabase.removeChannel(channel);
+          }
+        } catch (err) {
+          console.warn('[subscribeToChanges] Erro ao desinscrever:', err);
         }
       };
     } catch (err) {
-      console.error('[subscribeToChanges] Exceção ao criar subscription:', err);
+      console.warn('[subscribeToChanges] Erro ao criar subscription:', err);
       return () => {};
     }
   }
