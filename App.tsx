@@ -31,7 +31,6 @@ const App: React.FC = () => {
   const [loginData, setLoginData] = useState({ user: '', pass: '', usina: USINAS[0] });
   const [loginError, setLoginError] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const isInternalUpdate = useRef(false);
 
   // Carregamento Inicial
   useEffect(() => {
@@ -40,31 +39,20 @@ const App: React.FC = () => {
     });
   }, []);
 
-  // Monitorar mudanças externas via Real-time Service
-  useEffect(() => {
-    if (!state) return;
-    const unsubscribe = dataService.subscribeToChanges((data) => {
-      isInternalUpdate.current = true;
-      setState(prev => prev ? ({
-        ...prev,
-        inventory: data.inventory,
-        history: data.history
-      }) : null);
-      setTimeout(() => { isInternalUpdate.current = false; }, 100);
-    });
-    return () => unsubscribe();
-  }, [state?.isLoggedIn]);
-
-  // Persistência e Broadcast
+  // Monitorar mudanças em tempo real via Supabase Realtime
   useEffect(() => {
     if (!state) return;
     
-    dataService.persistState(state);
-
-    if (!isInternalUpdate.current && state.isLoggedIn && state.userRole === 'admin') {
-      dataService.broadcastChange(state.inventory, state.history);
-    }
-  }, [state?.inventory, state?.history]);
+    const unsubscribe = dataService.subscribeToChanges((data) => {
+      console.log('[App] Atualização em tempo real recebida:', data);
+      setState(prev => prev ? ({
+        ...prev,
+        inventory: data.inventory
+      }) : null);
+    });
+    
+    return () => unsubscribe();
+  }, []);
 
   if (!state) return (
     <div className="min-h-screen bg-slate-900 flex items-center justify-center">
@@ -115,32 +103,40 @@ const App: React.FC = () => {
     }) : null);
   };
 
-  const handleManualEntry = (e: React.FormEvent<HTMLFormElement>) => {
+  const handleManualEntry = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (!isAdmin) return;
+    
     const formData = new FormData(e.currentTarget);
     const material = formData.get('material') as MaterialKey;
-    const weight = parseFloat(formData.get('weight') as string);
+    const weightToAdd = parseFloat(formData.get('weight') as string);
 
-    if (!material || isNaN(weight)) return;
+    if (!material || isNaN(weightToAdd)) return;
 
-    setState(prev => prev ? ({
-      ...prev,
-      inventory: {
-        ...prev.inventory,
-        [prev.currentUsina]: {
-          ...prev.inventory[prev.currentUsina],
-          [material]: prev.inventory[prev.currentUsina][material] + weight
-        }
+    try {
+      const currentValue = state.inventory[state.currentUsina][material];
+      const newValue = currentValue + weightToAdd;
+      
+      // Buscar o item no banco e atualizar, ou criar se não existir
+      const allItems = await dataService.listarEstoque();
+      const existingItem = allItems.find(item => item.nome === material && item.usina === state.currentUsina);
+
+      if (existingItem && existingItem.id) {
+        await dataService.atualizarItemEstoque(existingItem.id, newValue);
+      } else {
+        await dataService.criarItemEstoque(material, newValue, state.currentUsina);
       }
-    }) : null);
 
-    addLog(state.currentUsina, 'ENTRADA', `Lançamento manual: ${material} (+${weight} kg)`);
-    setIsNoteModalOpen(false);
-    e.currentTarget.reset();
+      addLog(state.currentUsina, 'ENTRADA', `Lançamento manual: ${material} (+${weightToAdd} kg)`);
+      setIsNoteModalOpen(false);
+      e.currentTarget.reset();
+    } catch (err) {
+      console.error('[handleManualEntry] Erro:', err);
+      alert('Erro ao lançar nota fiscal');
+    }
   };
 
-  const handleEditStock = (e: React.FormEvent<HTMLFormElement>) => {
+  const handleEditStock = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (!editingMaterial || !isAdmin) return;
     
@@ -149,19 +145,23 @@ const App: React.FC = () => {
 
     if (isNaN(newWeight)) return;
 
-    setState(prev => prev ? ({
-      ...prev,
-      inventory: {
-        ...prev.inventory,
-        [prev.currentUsina]: {
-          ...prev.inventory[prev.currentUsina],
-          [editingMaterial]: newWeight
-        }
-      }
-    }) : null);
+    try {
+      // Buscar o item no banco e atualizar
+      const allItems = await dataService.listarEstoque();
+      const existingItem = allItems.find(item => item.nome === editingMaterial && item.usina === state.currentUsina);
 
-    addLog(state.currentUsina, 'RESET', `Saldo de ${editingMaterial} alterado manualmente para ${formatKg(newWeight)}`);
-    setEditingMaterial(null);
+      if (existingItem && existingItem.id) {
+        await dataService.atualizarItemEstoque(existingItem.id, newWeight);
+      } else {
+        await dataService.criarItemEstoque(editingMaterial, newWeight, state.currentUsina);
+      }
+
+      addLog(state.currentUsina, 'RESET', `Saldo de ${editingMaterial} alterado manualmente para ${formatKg(newWeight)}`);
+      setEditingMaterial(null);
+    } catch (err) {
+      console.error('[handleEditStock] Erro:', err);
+      alert('Erro ao alterar saldo');
+    }
   };
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -177,29 +177,30 @@ const App: React.FC = () => {
       try {
         const extracted = await processReportImage(base64, mimeType);
         
-        setState(prev => {
-          if (!prev) return null;
-          const usina = prev.currentUsina;
-          const current = prev.inventory[usina];
-          
-          const areiaFinaCons = extracted['AREIA FINA'] || extracted['AREIA FIN'] || 0;
-          const areiaMediaCons = (extracted['AREIA MEDI'] || extracted['AREIA MÉDIA'] || 0) + areiaFinaCons;
-          
-          const newStock = {
-            ...current,
-            [MaterialKey.BRITA_0]: Math.max(0, current[MaterialKey.BRITA_0] - (extracted['BRITA 0'] || 0)),
-            [MaterialKey.BRITA_1]: Math.max(0, current[MaterialKey.BRITA_1] - (extracted['BRITA 1'] || 0)),
-            [MaterialKey.AREIA_MEDIA]: Math.max(0, current[MaterialKey.AREIA_MEDIA] - areiaMediaCons),
-            [MaterialKey.AREIA_BRITA]: Math.max(0, current[MaterialKey.AREIA_BRITA] - (extracted['AREIA BRIT'] || extracted['AREIA DE BRITA'] || 0)),
-            [MaterialKey.SILO_1]: Math.max(0, current[MaterialKey.SILO_1] - (extracted['SILO 1'] || 0)),
-            [MaterialKey.SILO_2]: Math.max(0, current[MaterialKey.SILO_2] - (extracted['SILO 2'] || 0)),
-          };
+        // Buscar todos os itens para processar
+        const allItems = await dataService.listarEstoque();
+        const usina = state.currentUsina;
+        
+        // Processar cada material com deduções
+        const areiaFinaCons = extracted['AREIA FINA'] || extracted['AREIA FIN'] || 0;
+        const areiaMediaCons = (extracted['AREIA MEDI'] || extracted['AREIA MÉDIA'] || 0) + areiaFinaCons;
 
-          return {
-            ...prev,
-            inventory: { ...prev.inventory, [usina]: newStock }
-          };
-        });
+        const updates = [
+          { material: MaterialKey.BRITA_0, deduction: extracted['BRITA 0'] || 0 },
+          { material: MaterialKey.BRITA_1, deduction: extracted['BRITA 1'] || 0 },
+          { material: MaterialKey.AREIA_MEDIA, deduction: areiaMediaCons },
+          { material: MaterialKey.AREIA_BRITA, deduction: extracted['AREIA BRIT'] || extracted['AREIA DE BRITA'] || 0 },
+          { material: MaterialKey.SILO_1, deduction: extracted['SILO 1'] || 0 },
+          { material: MaterialKey.SILO_2, deduction: extracted['SILO 2'] || 0 }
+        ];
+
+        for (const { material, deduction } of updates) {
+          const existingItem = allItems.find(item => item.nome === material && item.usina === usina);
+          if (existingItem && existingItem.id && deduction > 0) {
+            const newValue = Math.max(0, (existingItem.quantidade || 0) - deduction);
+            await dataService.atualizarItemEstoque(existingItem.id, newValue);
+          }
+        }
 
         addLog(state.currentUsina, 'SAÍDA_RELATÓRIO', 'Relatório processado e estoque atualizado.');
         alert('Relatório processado com sucesso!');
