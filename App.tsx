@@ -60,13 +60,21 @@ const App: React.FC = () => {
     }
     
     console.log('[App] Configurando subscription Realtime');
-    const unsubscribe = dataService.subscribeToChanges((data) => {
+    const unsubscribe = dataService.subscribeToChanges(async (data) => {
       console.log('[App] Atualização em tempo real recebida');
+      
+      // Recarregar estado completo do banco
+      const freshState = await dataService.loadInitialState();
+      
       setState(prev => {
         if (!prev) return null;
         return {
           ...prev,
-          inventory: data.inventory
+          inventory: freshState.inventory,
+          // Manter userRole e isLoggedIn
+          userRole: prev.userRole,
+          isLoggedIn: prev.isLoggedIn,
+          currentUsina: prev.currentUsina
         };
       });
     });
