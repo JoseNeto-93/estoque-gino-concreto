@@ -129,18 +129,14 @@ const App: React.FC = () => {
     e.preventDefault();
     const { user, pass, usina } = loginData;
 
-    if (pass === '12345') {
-      if (user.toLowerCase() === 'balanceiro') {
-        setState(prev => prev ? ({ ...prev, isLoggedIn: true, userRole: 'admin', currentUsina: usina as UsinaName }) : null);
-        setLoginError('');
-      } else if (user.toLowerCase() === 'visitante') {
-        setState(prev => prev ? ({ ...prev, isLoggedIn: true, userRole: 'viewer', currentUsina: usina as UsinaName }) : null);
-        setLoginError('');
-      } else {
-        setLoginError('Usuário inválido');
-      }
+    if (user.toLowerCase() === 'balanceiro' && pass === '12345') {
+      setState(prev => prev ? ({ ...prev, isLoggedIn: true, userRole: 'admin', currentUsina: usina as UsinaName }) : null);
+      setLoginError('');
+    } else if (user.toLowerCase() === 'visitante' && pass === 'visitante') {
+      setState(prev => prev ? ({ ...prev, isLoggedIn: true, userRole: 'viewer', currentUsina: usina as UsinaName }) : null);
+      setLoginError('');
     } else {
-      setLoginError('Senha incorreta');
+      setLoginError('Usuário ou senha incorretos');
     }
   };
 

@@ -4,7 +4,13 @@ import { ExtractedReportData } from "../types";
 
 // Moved initialization inside the function to ensure the latest API key is used per guidelines
 export async function processReportImage(base64Data: string, mimeType: string): Promise<ExtractedReportData> {
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  const apiKey = import.meta.env.VITE_GEMINI_API_KEY || process.env.GEMINI_API_KEY;
+  
+  if (!apiKey) {
+    throw new Error("Chave API do Gemini não configurada. Configure a variável VITE_GEMINI_API_KEY no arquivo .env");
+  }
+  
+  const ai = new GoogleGenAI({ apiKey });
   
   // Garante que o base64 não contenha o prefixo de data URL
   const cleanBase64 = base64Data.includes('base64,') ? base64Data.split('base64,')[1] : base64Data;
