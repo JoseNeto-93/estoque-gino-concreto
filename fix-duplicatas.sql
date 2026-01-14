@@ -1,20 +1,29 @@
 -- ============================================
 -- SCRIPT PARA CORRIGIR DUPLICATAS NO BANCO
--- Execute este script no Supabase SQL Editor
+-- EXECUTE CADA ETAPA SEPARADAMENTE (uma de cada vez)
 -- ============================================
 
--- 1. VERIFICAR QUANTAS DUPLICATAS EXISTEM
+-- ============================================
+-- ETAPA 1: VERIFICAR DUPLICATAS
+-- ============================================
 SELECT 
     nome,
     usina,
-    COUNT(*) as duplicatas,
-    STRING_AGG(id::TEXT, ', ') as ids
+    COUNT(*) as duplicatas
 FROM estoque
 GROUP BY nome, usina
 HAVING COUNT(*) > 1
 ORDER BY duplicatas DESC;
 
--- 2. REMOVER DUPLICATAS PRIMEIRO (mantém apenas o mais recente por updated_at)
+-- Total de registros atual
+SELECT COUNT(*) as total_registros FROM estoque;
+
+
+-- ============================================
+-- ETAPA 2: REMOVER DUPLICATAS
+-- Execute esta query SOZINHA depois de ver os resultados acima
+-- ============================================
+/*
 DELETE FROM estoque 
 WHERE id IN (
   SELECT id 
@@ -25,23 +34,33 @@ WHERE id IN (
   ) t
   WHERE rn > 1
 );
+*/
 
--- 3. ADICIONAR CONSTRAINT UNIQUE (previne novas duplicatas)
-ALTER TABLE estoque 
-ADD CONSTRAINT estoque_nome_usina_unique 
-UNIQUE (nome, usina);
 
--- 4. VERIFICAR RESULTADO - deve ter 54 itens
+-- ============================================
+-- ETAPA 3: VERIFICAR SE FICARAM 54 ITENS
+-- Execute esta query SOZINHA depois da ETAPA 2
+-- ============================================
+/*
 SELECT 
     COUNT(*) as total_itens,
     COUNT(DISTINCT usina) as total_usinas,
     COUNT(DISTINCT nome) as total_materiais
 FROM estoque;
 
--- 5. VERIFICAR ESTOQUE POR USINA
-SELECT 
-    usina,
-    COUNT(*) as total_materiais
+SELECT usina, COUNT(*) as materiais
 FROM estoque
 GROUP BY usina
 ORDER BY usina;
+*/
+
+
+-- ============================================
+-- ETAPA 4: ADICIONAR CONSTRAINT (só se ETAPA 3 mostrar 54 itens)
+-- Execute esta query SOZINHA por último
+-- ============================================
+/*
+ALTER TABLE estoque 
+ADD CONSTRAINT estoque_nome_usina_unique 
+UNIQUE (nome, usina);
+*/
