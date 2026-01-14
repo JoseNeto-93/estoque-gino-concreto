@@ -22,6 +22,15 @@ interface EstoqueItem {
   updated_at?: string;
 }
 
+interface HistoricoItem {
+  id?: string;
+  usina: UsinaName;
+  action: string;
+  details: string;
+  timestamp?: string;
+  created_at?: string;
+}
+
 class DataService {
   private supabase: SupabaseClient | null = null;
   private realtimeChannel: RealtimeChannel | null = null;
@@ -161,6 +170,75 @@ class DataService {
   }
 
   /**
+   * CRIAR LOG NO HISTÓRICO
+   */
+  async criarLog(usina: UsinaName, action: string, details: string): Promise<HistoricoItem | null> {
+    if (!this.supabase) {
+      console.error('[criarLog] Supabase não configurado!');
+      return null;
+    }
+
+    try {
+      console.log('[criarLog] Criando log:', { usina, action, details });
+      const { data, error } = await this.supabase
+        .from('historico')
+        .insert([{ usina, action, details }])
+        .select()
+        .single();
+
+      if (error) {
+        console.error('[criarLog] Erro ao criar log:', error?.message ?? error);
+        console.error('[criarLog] Detalhes:', { code: error?.code, details: error?.details });
+        return null;
+      }
+
+      console.log('[criarLog] ✓ Log criado com sucesso:', data?.id);
+      return data as HistoricoItem;
+    } catch (err: any) {
+      console.error('[criarLog] Exceção capturada:', err?.message ?? err);
+      return null;
+    }
+  }
+
+  /**
+   * LISTAR HISTÓRICO - Busca os últimos 50 logs de uma usina
+   */
+  async listarHistorico(usina?: UsinaName): Promise<HistoricoItem[]> {
+    if (!this.supabase) {
+      console.error('[listarHistorico] Supabase não configurado!');
+      return [];
+    }
+
+    try {
+      console.log('[listarHistorico] Buscando histórico', usina ? `da usina ${usina}` : 'de todas as usinas');
+      
+      let query = this.supabase
+        .from('historico')
+        .select('*')
+        .order('timestamp', { ascending: false })
+        .limit(50);
+
+      if (usina) {
+        query = query.eq('usina', usina);
+      }
+
+      const { data, error } = await query;
+
+      if (error) {
+        console.error('[listarHistorico] Erro ao buscar histórico:', error?.message ?? error);
+        console.error('[listarHistorico] Detalhes do erro:', { code: error?.code, details: error?.details });
+        return [];
+      }
+
+      console.log('[listarHistorico] ✓ Logs carregados:', data?.length || 0);
+      return (data || []) as HistoricoItem[];
+    } catch (err: any) {
+      console.error('[listarHistorico] Exceção capturada:', err?.message ?? err);
+      return [];
+    }
+  }
+
+  /**
    * Carrega o estado inicial de todas as usinas a partir da tabela estoque.
    * Constrói um AppState baseado nos dados do banco.
    * NUNCA retorna null - sempre retorna um AppState válido mesmo com erro de conexão
@@ -174,9 +252,14 @@ class DataService {
     }
 
     try {
-      // Buscar todos os itens do estoque
-      const items = await this.listarEstoque();
+      // Buscar todos os itens do estoque e histórico em paralelo
+      const [items, historicoItems] = await Promise.all([
+        this.listarEstoque(),
+        this.listarHistorico()
+      ]);
+      
       console.log('[loadInitialState] Itens carregados:', items.length);
+      console.log('[loadInitialState] Logs histórico carregados:', historicoItems.length);
       
       // Construir inventory a partir dos itens
       const initialInventory: Record<UsinaName, StockData> = {} as any;
@@ -194,10 +277,22 @@ class DataService {
         initialHistory[u] = [];
       });
 
-      // Preencher com dados do banco
+      // Preencher inventory com dados do banco
       items.forEach((item: any) => {
         if (initialInventory[item.usina] && item.nome in initialInventory[item.usina]) {
           initialInventory[item.usina][item.nome] = item.quantidade;
+        }
+      });
+
+      // Preencher histórico com dados do banco
+      historicoItems.forEach((log: any) => {
+        if (initialHistory[log.usina]) {
+          initialHistory[log.usina].push({
+            id: log.id,
+            timestamp: new Date(log.timestamp).toLocaleString('pt-BR'),
+            action: log.action,
+            details: log.details
+          });
         }
       });
 
@@ -242,7 +337,7 @@ class DataService {
   }
 
   /**
-   * Subscreve a mudanças em tempo real na tabela estoque usando Supabase Realtime.
+   * Subscreve a mudanças em tempo real nas tabelas estoque e historico usando Supabase Realtime.
    * Escuta eventos: INSERT, UPDATE, DELETE
    * Invoca callback com os dados atualizados quando há mudanças.
    * Retorna função de unsubscribe.
@@ -255,10 +350,10 @@ class DataService {
     }
 
     try {
-      console.log('[subscribeToChanges] Criando channel Realtime para "estoque"');
+      console.log('[subscribeToChanges] Criando channels Realtime para "estoque" e "historico"');
       
-      // Criar channel para monitorar a tabela estoque
-      const channel = this.supabase
+      // Channel para monitorar a tabela estoque
+      const estoqueChannel = this.supabase
         .channel('estoque_changes_' + Date.now())
         .on(
           'postgres_changes',
@@ -268,30 +363,67 @@ class DataService {
             table: 'estoque'
           },
           (payload: any) => {
-            // NÃO usar async aqui - disparar recarregamento sem bloquear
-            console.log('[subscribeToChanges] Evento recebido:', payload.eventType);
+            console.log('[subscribeToChanges] Evento estoque recebido:', payload.eventType);
             
-            // Recarregar estado de forma não-bloqueante
+            // Recarregar inventário
             this.listarEstoque()
               .then(items => {
                 const inventory = this.buildInventoryFromItems(items);
                 callback({ inventory, history: {} });
               })
               .catch(err => {
-                console.warn('[subscribeToChanges] Erro ao recarregar após evento:', err);
+                console.warn('[subscribeToChanges] Erro ao recarregar estoque:', err);
               });
           }
         )
-        .subscribe((status) => {
-          console.log('[subscribeToChanges] Status de subscrição:', status);
-        });
+        .subscribe();
 
-      // Retornar função de cleanup que remove o channel
+      // Channel para monitorar a tabela historico
+      const historicoChannel = this.supabase
+        .channel('historico_changes_' + Date.now())
+        .on(
+          'postgres_changes',
+          {
+            event: 'INSERT', // Apenas novos logs
+            schema: 'public',
+            table: 'historico'
+          },
+          (payload: any) => {
+            console.log('[subscribeToChanges] Novo log no histórico:', payload.new);
+            
+            // Recarregar histórico completo
+            this.listarHistorico()
+              .then(logs => {
+                const history: Record<UsinaName, HistoryLog[]> = {} as any;
+                USINAS.forEach(u => { history[u] = []; });
+                
+                logs.forEach((log: any) => {
+                  if (history[log.usina]) {
+                    history[log.usina].push({
+                      id: log.id,
+                      timestamp: new Date(log.timestamp).toLocaleString('pt-BR'),
+                      action: log.action,
+                      details: log.details
+                    });
+                  }
+                });
+                
+                callback({ inventory: {}, history });
+              })
+              .catch(err => {
+                console.warn('[subscribeToChanges] Erro ao recarregar histórico:', err);
+              });
+          }
+        )
+        .subscribe();
+
+      // Retornar função de cleanup que remove ambos os channels
       return () => {
         console.log('[subscribeToChanges] Desinscrição de mudanças');
         try {
-          if (this.supabase && channel) {
-            this.supabase.removeChannel(channel);
+          if (this.supabase) {
+            this.supabase.removeChannel(estoqueChannel);
+            this.supabase.removeChannel(historicoChannel);
           }
         } catch (err) {
           console.warn('[subscribeToChanges] Erro ao desinscrever:', err);

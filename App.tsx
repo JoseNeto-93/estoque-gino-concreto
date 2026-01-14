@@ -63,14 +63,23 @@ const App: React.FC = () => {
     const unsubscribe = dataService.subscribeToChanges(async (data) => {
       console.log('[App] Atualização em tempo real recebida');
       
-      // Recarregar estado completo do banco
-      const freshState = await dataService.loadInitialState();
-      
       setState(prev => {
         if (!prev) return null;
+        
+        // Atualizar inventory se fornecido
+        const newInventory = Object.keys(data.inventory).length > 0 
+          ? data.inventory 
+          : prev.inventory;
+        
+        // Atualizar history se fornecido
+        const newHistory = Object.keys(data.history).length > 0 
+          ? data.history 
+          : prev.history;
+        
         return {
           ...prev,
-          inventory: freshState.inventory,
+          inventory: newInventory,
+          history: newHistory,
           // Manter userRole e isLoggedIn
           userRole: prev.userRole,
           isLoggedIn: prev.isLoggedIn,
@@ -151,7 +160,11 @@ const App: React.FC = () => {
   const estimates = calculateEstimates(currentStock);
   const isAdmin = state?.userRole === 'admin';
 
-  const addLog = (usina: UsinaName, action: HistoryLog['action'], details: string) => {
+  const addLog = async (usina: UsinaName, action: HistoryLog['action'], details: string) => {
+    // Salvar no banco de dados
+    await dataService.criarLog(usina, action, details);
+    
+    // Também adicionar localmente para feedback imediato (será sobrescrito pela subscription)
     const newLog: HistoryLog = {
       id: Math.random().toString(36).substr(2, 9),
       timestamp: new Date().toLocaleString('pt-BR'),
