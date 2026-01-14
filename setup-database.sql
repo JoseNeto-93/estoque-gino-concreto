@@ -12,14 +12,14 @@ CREATE TABLE IF NOT EXISTS estoque (
   quantidade FLOAT NOT NULL DEFAULT 0,
   usina TEXT NOT NULL,
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE(nome, usina)  -- Previne duplicatas: cada material só pode aparecer uma vez por usina
 );
 
 -- 2. CRIAR ÍNDICES PARA PERFORMANCE
 -- ============================================
 
 CREATE INDEX IF NOT EXISTS idx_estoque_usina ON estoque(usina);
-CREATE INDEX IF NOT EXISTS idx_estoque_nome_usina ON estoque(nome, usina);
 CREATE INDEX IF NOT EXISTS idx_estoque_updated_at ON estoque(updated_at DESC);
 
 -- 3. CRIAR FUNÇÃO PARA ATUALIZAR updated_at AUTOMATICAMENTE
@@ -43,11 +43,14 @@ CREATE TRIGGER update_estoque_updated_at
     FOR EACH ROW
     EXECUTE FUNCTION update_updated_at_column();
 
--- 5. INSERIR DADOS INICIAIS - TODAS AS USINAS
+-- 5. LIMPAR DUPLICATAS E INSERIR DADOS INICIAIS
 -- ============================================
 
--- Limpar dados existentes (CUIDADO: Remove todos os dados!)
--- TRUNCATE TABLE estoque;
+-- IMPORTANTE: Remove duplicatas mantendo apenas o registro mais recente
+DELETE FROM estoque a USING estoque b
+WHERE a.id < b.id 
+AND a.nome = b.nome 
+AND a.usina = b.usina;
 
 INSERT INTO estoque (nome, quantidade, usina) VALUES
 -- Angatuba
@@ -122,8 +125,10 @@ INSERT INTO estoque (nome, quantidade, usina) VALUES
 ('SILO 1', 0, 'Jacarezinho'),
 ('SILO 2', 0, 'Jacarezinho')
 
--- Prevenir duplicatas
-ON CONFLICT DO NOTHING;
+-- Atualiza se já existir (devido à constraint UNIQUE), insere se não existir
+ON CONFLICT (nome, usina) DO UPDATE SET
+  quantidade = EXCLUDED.quantidade,
+  updated_at = CURRENT_TIMESTAMP;
 
 -- 6. VERIFICAR DADOS INSERIDOS
 -- ============================================
